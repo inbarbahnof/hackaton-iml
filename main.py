@@ -5,6 +5,17 @@ from typing import NoReturn
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import sklearn.model_selection as sk
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
+
+TRAIN_BUS_CSV_PATH = "data/train_bus_schedule.csv"
+X_PASSENGER = "data/X_passengers_up.csv"
+X_TRIP = "data/X_trip_duration.csv"
+ENCODER = "windows-1255"
+RANDOM_STATE = 42
 
 """
 usage:
@@ -15,7 +26,6 @@ for example:
     /cs/usr/gililior/test.csv --out predictions/trip_duration_predictions.csv 
 
 """
-
 
 # implement here your load,preprocess,train,predict,save functions (or any other design you choose)
 
@@ -70,11 +80,58 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # 1. load the training set (args.training_set)
+    train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
+    x_passenger = pd.read_csv(X_PASSENGER, encoding=ENCODER)
+    sample_size = 0.05  # 5% of the data
+    baseline = train_bus.sample(frac=sample_size, random_state=RANDOM_STATE)
+    remaining_data = train_bus.drop(baseline.index)
+    x_base_line = baseline[x_passenger.columns]
+    y_base_line = baseline["passengers_up"]
+
+
     # 2. preprocess the training set
     logging.info("preprocessing train...")
 
+    # creating door delta columns 
+    x_base_line['door_closing_time'] = pd.to_datetime(x_base_line['door_closing_time'])
+    x_base_line['arrival_time'] = pd.to_datetime(x_base_line['arrival_time'])
+    x_base_line["door_close_delta"] = None
+    x_base_line.loc[x_base_line["door_closing_time"].notna(),['door_close_delta']] =(x_base_line.loc[x_base_line["door_closing_time"].notna(),'door_closing_time'] - x_base_line.loc[x_base_line["door_closing_time"].notna(),'arrival_time']).dt.total_seconds()
+    door_delta_mean = x_base_line["door_close_delta"].mean()
+    x_base_line["door_close_delta"] = x_base_line["door_close_delta"].fillna(door_delta_mean)
+    x_base_line['arrival_time'] = pd.to_datetime(x_base_line['arrival_time'])
+
+    # catgorized arrival time 
+    arrival_hours = x_base_line['arrival_time'].dt.hour
+    percentiles = arrival_hours.describe(percentiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    percentile_values = percentiles.loc[['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%']].values
+    labels = [f'{int(value)}' for value in percentile_values]
+    labels.insert(0, '0')
+    x_base_line['arrival_time_label'] = pd.cut(arrival_hours, 
+                                            bins=[0] + list(percentile_values) + [24], 
+                                            labels=labels, 
+                                            include_lowest=True)
+    # Label Encoding
+    label_encoder = LabelEncoder()
+    x_base_line['part_encoded'] = label_encoder.fit_transform(x_base_line['part'])
+    x_base_line['alternative_encoded'] = label_encoder.fit_transform(x_base_line['alternative'])
+    del x_base_line["arrival_time"]
+    del x_base_line["door_closing_time"]
+    del x_base_line["cluster"]
+    del x_base_line["station_name"]
+    del x_base_line["part"]
+    del x_base_line["trip_id_unique"]
+    del x_base_line["trip_id_unique_station"]
+    del x_base_line["alternative"]
+
+    X_train,X_test,y_train,y_test = sk.train_test_split(x_base_line,y_base_line,test_size=0.25,random_state=RANDOM_STATE)
     # 3. train a model
     logging.info("training...")
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
 
     # 4. load the test set (args.test_set)
     # 5. preprocess the test set
