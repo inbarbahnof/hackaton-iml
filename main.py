@@ -10,6 +10,8 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.tree import DecisionTreeRegressor
 
 TRAIN_BUS_CSV_PATH = "data/train_bus_schedule.csv"
 X_PASSENGER = "data/X_passengers_up.csv"
@@ -26,7 +28,6 @@ for example:
     /cs/usr/gililior/test.csv --out predictions/trip_duration_predictions.csv 
 
 """
-
 
 # implement here your load,preprocess,train,predict,save functions (or any other design you choose)
 
@@ -144,6 +145,31 @@ if __name__ == '__main__':
     # 3. train a model
     logging.info("training...")
     mse_linear, r2_linear = linear_regression(X_train, X_test, y_train, y_test)
+    # descition trees 
+    model_dt = DecisionTreeRegressor(random_state=RANDOM_STATE)
+    model_dt.fit(X_train, y_train)
+    # Predict on the test set
+    y_pred_dt = model_dt.predict(X_test)
+    # Calculate performance metrics
+    mse_dt = mean_squared_error(y_test, y_pred_dt)
+    r2_dt = r2_score(y_test, y_pred_dt)
+    print('Decision Tree Regression')
+    print(f'Mean Squared Error: {mse_dt}')
+
+
+    #polynomial fiiting 
+    poly = PolynomialFeatures(degree=2)
+    X_train_poly = poly.fit_transform(X_train)
+    X_test_poly = poly.transform(X_test)
+    # Initialize and train the Polynomial Regression model
+    model_poly = LinearRegression()
+    model_poly.fit(X_train_poly, y_train)
+    # Predict on the test set
+    y_pred_poly = model_poly.predict(X_test_poly)
+    # Calculate MSE
+    mse_poly = mean_squared_error(y_test, y_pred_poly)
+    print(mse_poly)
+
 
     # 4. load the test set (args.test_set)
     # 5. preprocess the test set
