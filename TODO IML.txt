@@ -1,3 +1,8 @@
 TODO IML
-pre-processing:
-read utf8-> hebrew
+1. baseline second mission
+
+2. than spilt and start to improve the models:
+process str, location?
+ensemble methods
+
+3. 16 starts working on assignment 3? as early as possible

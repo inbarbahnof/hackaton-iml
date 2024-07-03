@@ -29,9 +29,11 @@ for example:
 
 """
 
+
 # implement here your load,preprocess,train,predict,save functions (or any other design you choose)
 
-def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = "feature_evaluation") -> NoReturn:
+def feature_evaluation(X: pd.DataFrame, y: pd.Series,
+                       output_path: str = "feature_evaluation") -> NoReturn:
     """
     Create scatter plot between each feature and the response.
         - Plot title specifies feature name
@@ -69,6 +71,7 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = "featur
         plot_filename = os.path.join(output_path, f'{feature}_vs_price.png')
         plt.savefig(plot_filename)
         plt.close()
+
 
 def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
     # creating door delta columns
@@ -110,6 +113,20 @@ def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
     return sk.train_test_split(x_base_line, y_base_line, test_size=0.25,
                                random_state=RANDOM_STATE)
 
+
+def desition_trees(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
+                   y_test: pd.Series):
+    # descition trees
+    model_dt = DecisionTreeRegressor(random_state=RANDOM_STATE)
+    model_dt.fit(X_train, y_train)
+    # Predict on the test set
+    y_pred_dt = model_dt.predict(X_test)
+    # Calculate performance metrics
+    mse_dt = mean_squared_error(y_test, y_pred_dt)
+    r2_dt = r2_score(y_test, y_pred_dt)
+    return mse_dt, r2_dt
+
+
 def linear_regression(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
                       y_test: pd.Series):
     model = LinearRegression()
@@ -119,15 +136,32 @@ def linear_regression(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.S
     r2 = r2_score(y_test, y_pred)
     return mse, r2
 
+
+def polynomial_fitting(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
+                       y_test: pd.Series):
+    # polynomial fiiting
+    poly = PolynomialFeatures(degree=2)
+    X_train_poly = poly.fit_transform(X_train)
+    X_test_poly = poly.transform(X_test)
+    # Initialize and train the Polynomial Regression model
+    model_poly = LinearRegression()
+    model_poly.fit(X_train_poly, y_train)
+    # Predict on the test set
+    y_pred_poly = model_poly.predict(X_test_poly)
+    # Calculate MSE
+    mse_poly = mean_squared_error(y_test, y_pred_poly)
+    return mse_poly
+
+
 if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument('--training_set', type=str, required=True,
-                        help="path to the training set")
-    parser.add_argument('--test_set', type=str, required=True,
-                        help="path to the test set")
-    parser.add_argument('--out', type=str, required=True,
-                        help="path of the output file as required in the task description")
-    args = parser.parse_args()
+    # parser = ArgumentParser()
+    # parser.add_argument('--training_set', type=str, required=True,
+    #                     help="path to the training set")
+    # parser.add_argument('--test_set', type=str, required=True,
+    #                     help="path to the test set")
+    # parser.add_argument('--out', type=str, required=True,
+    #                     help="path of the output file as required in the task description")
+    # args = parser.parse_args()
 
     # 1. load the training set (args.training_set)
     train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
@@ -142,34 +176,23 @@ if __name__ == '__main__':
     logging.info("preprocessing train...")
     X_train, X_test, y_train, y_test = preprocessing_baseline(x_base_line, y_base_line)
 
+    #feature evaluation
+    # feature_evaluation(X_train, y_train)
+
     # 3. train a model
     logging.info("training...")
     mse_linear, r2_linear = linear_regression(X_train, X_test, y_train, y_test)
-    # descition trees 
-    model_dt = DecisionTreeRegressor(random_state=RANDOM_STATE)
-    model_dt.fit(X_train, y_train)
-    # Predict on the test set
-    y_pred_dt = model_dt.predict(X_test)
-    # Calculate performance metrics
-    mse_dt = mean_squared_error(y_test, y_pred_dt)
-    r2_dt = r2_score(y_test, y_pred_dt)
+    mse_trees, r2_trees = desition_trees(X_train, X_test, y_train, y_test)
+    mse_poly = polynomial_fitting(X_train, X_test, y_train, y_test)
+
+    print('Decision linear_regression')
+    print(f'Mean Squared Error: {mse_linear}')
+
     print('Decision Tree Regression')
-    print(f'Mean Squared Error: {mse_dt}')
+    print(f'Mean Squared Error: {mse_trees}')
 
-
-    #polynomial fiiting 
-    poly = PolynomialFeatures(degree=2)
-    X_train_poly = poly.fit_transform(X_train)
-    X_test_poly = poly.transform(X_test)
-    # Initialize and train the Polynomial Regression model
-    model_poly = LinearRegression()
-    model_poly.fit(X_train_poly, y_train)
-    # Predict on the test set
-    y_pred_poly = model_poly.predict(X_test_poly)
-    # Calculate MSE
-    mse_poly = mean_squared_error(y_test, y_pred_poly)
-    print(mse_poly)
-
+    print('Decision polynomial_fitting')
+    print(f'Mean Squared Error: {mse_poly}')
 
     # 4. load the test set (args.test_set)
     # 5. preprocess the test set
@@ -179,4 +202,4 @@ if __name__ == '__main__':
     logging.info("predicting...")
 
     # 7. save the predictions to args.out
-    logging.info("predictions saved to {}".format(args.out))
+    # logging.info("predictions saved to {}".format(args.out))
