@@ -6,15 +6,16 @@ from typing import NoReturn
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 """
 usage:
     python code/main.py --training_set PATH --test_set PATH --out PATH
 
 for example:
-    python code/main.py --training_set /cs/usr/gililior/training.csv --test_set /cs/usr/gililior/test.csv --out predictions/trip_duration_predictions.csv 
+    python code/main.py --training_set /cs/usr/gililior/training.csv --test_set 
+    /cs/usr/gililior/test.csv --out predictions/trip_duration_predictions.csv 
 
 """
+
 
 # implement here your load,preprocess,train,predict,save functions (or any other design you choose)
 
@@ -46,7 +47,8 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = ".") ->
         # Create scatter plot
         plt.figure(figsize=(10, 6))
         plt.scatter(X[feature], y, alpha=0.5)
-        plt.title(f'{feature} vs Price\nPearson Correlation: {pearson_corr:.2f}', fontsize=14)
+        plt.title(f'{feature} vs people_on_bus\nPearson Correlation: {pearson_corr:.2f}',
+                  fontsize=14)
         plt.xlabel(feature, fontsize=12)
         plt.ylabel('Price', fontsize=12)
         plt.grid(True)
