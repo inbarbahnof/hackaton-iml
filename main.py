@@ -27,9 +27,10 @@ for example:
 
 """
 
+
 # implement here your load,preprocess,train,predict,save functions (or any other design you choose)
 
-def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = ".") -> NoReturn:
+def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = "feature_evaluation") -> NoReturn:
     """
     Create scatter plot between each feature and the response.
         - Plot title specifies feature name
@@ -68,6 +69,54 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = ".") ->
         plt.savefig(plot_filename)
         plt.close()
 
+def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
+    # creating door delta columns
+    x_base_line['door_closing_time'] = pd.to_datetime(x_base_line['door_closing_time'])
+    x_base_line['arrival_time'] = pd.to_datetime(x_base_line['arrival_time'])
+    x_base_line["door_close_delta"] = None
+    x_base_line.loc[x_base_line["door_closing_time"].notna(), ['door_close_delta']] = (
+            x_base_line.loc[x_base_line["door_closing_time"].notna(), 'door_closing_time'] -
+            x_base_line.loc[
+                x_base_line["door_closing_time"].notna(), 'arrival_time']).dt.total_seconds()
+    door_delta_mean = x_base_line["door_close_delta"].mean()
+    x_base_line["door_close_delta"] = x_base_line["door_close_delta"].fillna(door_delta_mean)
+    x_base_line['arrival_time'] = pd.to_datetime(x_base_line['arrival_time'])
+
+    # catgorized arrival time
+    arrival_hours = x_base_line['arrival_time'].dt.hour
+    percentiles = arrival_hours.describe(percentiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    percentile_values = percentiles.loc[
+        ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%']].values
+    labels = [f'{int(value)}' for value in percentile_values]
+    labels.insert(0, '0')
+    x_base_line['arrival_time_label'] = pd.cut(arrival_hours,
+                                               bins=[0] + list(percentile_values) + [24],
+                                               labels=labels,
+                                               include_lowest=True)
+    # Label Encoding
+    label_encoder = LabelEncoder()
+    x_base_line['part_encoded'] = label_encoder.fit_transform(x_base_line['part'])
+    x_base_line['alternative_encoded'] = label_encoder.fit_transform(x_base_line['alternative'])
+    del x_base_line["arrival_time"]
+    del x_base_line["door_closing_time"]
+    del x_base_line["cluster"]
+    del x_base_line["station_name"]
+    del x_base_line["part"]
+    del x_base_line["trip_id_unique"]
+    del x_base_line["trip_id_unique_station"]
+    del x_base_line["alternative"]
+
+    return sk.train_test_split(x_base_line, y_base_line, test_size=0.25,
+                               random_state=RANDOM_STATE)
+
+def linear_regression(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
+                      y_test: pd.Series):
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+    return mse, r2
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -88,50 +137,13 @@ if __name__ == '__main__':
     x_base_line = baseline[x_passenger.columns]
     y_base_line = baseline["passengers_up"]
 
-
     # 2. preprocess the training set
     logging.info("preprocessing train...")
+    X_train, X_test, y_train, y_test = preprocessing_baseline(x_base_line, y_base_line)
 
-    # creating door delta columns 
-    x_base_line['door_closing_time'] = pd.to_datetime(x_base_line['door_closing_time'])
-    x_base_line['arrival_time'] = pd.to_datetime(x_base_line['arrival_time'])
-    x_base_line["door_close_delta"] = None
-    x_base_line.loc[x_base_line["door_closing_time"].notna(),['door_close_delta']] =(x_base_line.loc[x_base_line["door_closing_time"].notna(),'door_closing_time'] - x_base_line.loc[x_base_line["door_closing_time"].notna(),'arrival_time']).dt.total_seconds()
-    door_delta_mean = x_base_line["door_close_delta"].mean()
-    x_base_line["door_close_delta"] = x_base_line["door_close_delta"].fillna(door_delta_mean)
-    x_base_line['arrival_time'] = pd.to_datetime(x_base_line['arrival_time'])
-
-    # catgorized arrival time 
-    arrival_hours = x_base_line['arrival_time'].dt.hour
-    percentiles = arrival_hours.describe(percentiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
-    percentile_values = percentiles.loc[['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%']].values
-    labels = [f'{int(value)}' for value in percentile_values]
-    labels.insert(0, '0')
-    x_base_line['arrival_time_label'] = pd.cut(arrival_hours, 
-                                            bins=[0] + list(percentile_values) + [24], 
-                                            labels=labels, 
-                                            include_lowest=True)
-    # Label Encoding
-    label_encoder = LabelEncoder()
-    x_base_line['part_encoded'] = label_encoder.fit_transform(x_base_line['part'])
-    x_base_line['alternative_encoded'] = label_encoder.fit_transform(x_base_line['alternative'])
-    del x_base_line["arrival_time"]
-    del x_base_line["door_closing_time"]
-    del x_base_line["cluster"]
-    del x_base_line["station_name"]
-    del x_base_line["part"]
-    del x_base_line["trip_id_unique"]
-    del x_base_line["trip_id_unique_station"]
-    del x_base_line["alternative"]
-
-    X_train,X_test,y_train,y_test = sk.train_test_split(x_base_line,y_base_line,test_size=0.25,random_state=RANDOM_STATE)
     # 3. train a model
     logging.info("training...")
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    mse = mean_squared_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
+    mse_linear, r2_linear = linear_regression(X_train, X_test, y_train, y_test)
 
     # 4. load the test set (args.test_set)
     # 5. preprocess the test set
