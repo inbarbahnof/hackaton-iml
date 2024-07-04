@@ -13,6 +13,11 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.tree import DecisionTreeRegressor
 import evaluation_scripts.eval_trip_duration as eval
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 
 TRAIN_BUS_CSV_PATH = "data/train_bus_schedule.csv"
 X_PASSENGER = "data/X_passengers_up.csv"
@@ -151,6 +156,84 @@ def __creating_labels(dur_baseline):
     min_max_time["delta"] = round(min_max_time["delta"], 2)
     return min_max_time[["trip_id_unique", "delta"]]
 
+def run_pca():
+    # Load the data
+    data = pd.read_csv('dur_baseline.csv')
+
+    # Convert time-related columns to datetime
+    data['arrival_time'] = pd.to_datetime(data['arrival_time'], format='%H:%M:%S', errors='coerce')
+    data['door_closing_time'] = pd.to_datetime(data['door_closing_time'], format='%H:%M:%S', errors='coerce')
+
+    # Calculate door closing delta
+    data['door_close_delta'] = (data['door_closing_time'] - data['arrival_time']).dt.total_seconds()
+
+    # Fill NaN values in door_close_delta with the mean
+    data['door_close_delta'].fillna(data['door_close_delta'].mean(), inplace=True)
+
+    # Drop original time columns
+    data.drop(columns=['arrival_time', 'door_closing_time'], inplace=True)
+
+    # Label encode categorical columns
+    label_cols = ['part', 'trip_id_unique_station', 'trip_id_unique', 'line_id', 'direction', 'alternative', 'cluster', 'station_name']
+    label_encoder = LabelEncoder()
+
+    for col in label_cols:
+        data[col] = label_encoder.fit_transform(data[col])
+
+    # Ensure all columns are numeric
+    for col in data.columns:
+        data[col] = pd.to_numeric(data[col], errors='coerce')
+
+    # Handle any remaining NaN values
+    data.fillna(data.mean(), inplace=True)
+
+    # Drop non-feature columns if any
+    data.drop(columns=['trip_id'], inplace=True)
+
+    # Separate features and target variable if needed
+    X = data.drop(columns=['passengers_up'])
+    y = data['passengers_up']
+
+    # Normalize the data
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # Apply PCA
+    pca = PCA()
+    X_pca = pca.fit_transform(X_scaled)
+
+    # Plot the explained variance ratio
+    plt.figure(figsize=(10, 6))
+    plt.plot(np.cumsum(pca.explained_variance_ratio_), marker='o', linestyle='--')
+    plt.title('Explained Variance by Principal Components')
+    plt.xlabel('Number of Principal Components')
+    plt.ylabel('Cumulative Explained Variance')
+    plt.grid()
+    plt.show()
+
+    # Select the number of components that explain a good amount of variance, e.g., 95%
+    explained_variance = np.cumsum(pca.explained_variance_ratio_)
+    n_components = np.argmax(explained_variance >= 0.95) + 1
+
+    print(f'Number of components that explain 95% of the variance: {n_components}')
+
+    # Apply PCA with the selected number of components
+    pca = PCA(n_components=n_components)
+    X_reduced = pca.fit_transform(X_scaled)
+
+    # Convert to DataFrame
+    X_reduced_df = pd.DataFrame(X_reduced, columns=[f'PC{i+1}' for i in range(n_components)])
+
+    # Optionally, add the target variable back to the DataFrame
+    X_reduced_df['passengers_up'] = y.values
+
+    # Display the first few rows of the reduced DataFrame
+    # print(X_reduced_df.head())
+
+    return X_reduced_df
+
+ 
+    
 
 if __name__ == '__main__':
     # parser = ArgumentParser()
@@ -168,6 +251,7 @@ if __name__ == '__main__':
     lines_for_baseline = train_bus["trip_id_unique"].drop_duplicates().sample(frac=0.10,
                                                                               random_state=RANDOM_STATE)
     dur_baseline = train_bus[train_bus["trip_id_unique"].isin(lines_for_baseline)]
+    # dur_baseline.to_csv("dur_baseline.csv")
     dur_baseline = dur_baseline[x_trip_duration.columns]
     dur_labels = __creating_labels(dur_baseline)
 
@@ -178,6 +262,25 @@ if __name__ == '__main__':
     # 3. train a model
     mse_poly = linear_regression(X_train, X_test, y_train, y_test)
     print('Decision polynomial_fitting')
+    print(f'Mean Squared Error: {mse_poly}')
+
+    X_reduced = run_pca()
+    dur_baseline = X_reduced.drop(columns = ["PC12","PC13","PC14","passengers_up"])
+    dur_labels = X_reduced["passengers_up"]
+
+    # 2. preprocess the training set
+    # X_train, X_test, y_train, y_test = preprocessing_baseline(dur_baseline, dur_labels)
+    X_train, X_test, y_train, y_test  = sk.train_test_split(dur_baseline,dur_labels,train_size=0.75,random_state=RANDOM_STATE)
+        # Linear regression
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+
+    # Predict on the test set
+    y_pred = model.predict(X_test)
+    # mse_board = eval.eval_duration(predictions_df, ground_truth_df)
+    # mse_poly = mean_squared_error(dur_labels, y_pred)
+    #mse_poly = linear_regression(X_train, X_test, y_train, y_test)
+    print('Decision polynomial_fitting after pca')
     print(f'Mean Squared Error: {mse_poly}')
 
     # 4. load the test set (args.test_set)
