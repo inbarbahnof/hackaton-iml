@@ -33,8 +33,7 @@ for example:
 
 # implement here your load,preprocess,train,predict,save functions (or any other design you choose)
 
-def feature_evaluation(X: pd.DataFrame, y: pd.Series,
-                       output_path: str = "feature_evaluation") -> NoReturn:
+def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = "feature_evaluation") -> NoReturn:
     """
     Create scatter plot between each feature and the response.
         - Plot title specifies feature name
@@ -55,21 +54,32 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series,
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
+    # Ensure y is numeric
+    y = pd.to_numeric(y, errors='coerce')
+
     for feature in X.columns:
-        # calculate Pearson correlation
-        pearson_corr = np.cov(X[feature], y)[0, 1] / (np.std(X[feature]) * np.std(y))
+        # Ensure feature column is numeric
+        X[feature] = pd.to_numeric(X[feature], errors='coerce')
+        
+        # Drop rows with NaN values
+        valid_data = X[[feature]].join(y).dropna()
+        if valid_data.empty:
+            logging.warning(f"No valid data for feature {feature}. Skipping plot.")
+            continue
+
+        # Calculate Pearson correlation
+        pearson_corr = np.cov(valid_data[feature], valid_data[y.name])[0, 1] / (np.std(valid_data[feature]) * np.std(valid_data[y.name]))
 
         # Create scatter plot
         plt.figure(figsize=(10, 6))
-        plt.scatter(X[feature], y, alpha=0.5)
-        plt.title(f'{feature} vs people_on_bus\nPearson Correlation: {pearson_corr:.2f}',
-                  fontsize=14)
+        plt.scatter(valid_data[feature], valid_data[y.name], alpha=0.5)
+        plt.title(f'{feature} vs people_on_bus\nPearson Correlation: {pearson_corr:.2f}', fontsize=14)
         plt.xlabel(feature, fontsize=12)
-        plt.ylabel('Price', fontsize=12)
+        plt.ylabel('Passengers', fontsize=12)
         plt.grid(True)
 
         # Save plot to file
-        plot_filename = os.path.join(output_path, f'{feature}_vs_price.png')
+        plot_filename = os.path.join(output_path, f'{feature}_vs_passengers.png')
         plt.savefig(plot_filename)
         plt.close()
 
@@ -80,15 +90,21 @@ def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
 
     # Convert to datetime
     X = X.copy()  # To avoid SettingWithCopyWarning
-    X.loc[:, 'door_closing_time'] = pd.to_datetime(X['door_closing_time'])
-    X.loc[:, 'arrival_time'] = pd.to_datetime(X['arrival_time'])
+    X['door_closing_time'] = pd.to_datetime(X['door_closing_time'], errors='coerce')
+    X['arrival_time'] = pd.to_datetime(X['arrival_time'], errors='coerce')
+
+    # Verify the columns are datetime
+    if not pd.api.types.is_datetime64_any_dtype(X['door_closing_time']):
+        raise TypeError("door_closing_time column is not datetime type")
+    if not pd.api.types.is_datetime64_any_dtype(X['arrival_time']):
+        raise TypeError("arrival_time column is not datetime type")
 
     # Create door delta columns
     X["door_close_delta"] = None
     mask_notna = X["door_closing_time"].notna()
-    X.loc[mask_notna, 'door_close_delta'] = (
-            X.loc[mask_notna, 'door_closing_time'] - X.loc[mask_notna, 'arrival_time']
-    ).dt.total_seconds()
+    X.loc[mask_notna, 'door_close_delta'] = (X.loc[mask_notna, 'door_closing_time'] - X.loc[mask_notna, 'arrival_time']).dt.total_seconds()
+
+    # Handle NaN values by replacing them with the mean
     door_delta_mean = X["door_close_delta"].mean()
     X["door_close_delta"] = X["door_close_delta"].fillna(door_delta_mean)
 
@@ -268,7 +284,7 @@ if __name__ == '__main__':
     X_train, X_test, y_train, y_test = preprocessing_baseline(x_base_line, y_base_line)
 
     # feature evaluation
-    # feature_evaluation(X_train, y_train)
+    feature_evaluation(X_train, y_train)
 
     # 3. train a model
     logging.info("training...")
