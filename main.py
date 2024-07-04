@@ -312,7 +312,39 @@ def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
         results.append((params, rmse))
 
     # Return results for further analysis or selection
+    plot_results(results)
     return results
+
+def plot_results(results):
+    # Extract parameter values and RMSE
+    max_depths = [res[0]['max_depth'] for res in results]
+    learning_rates = [res[0]['learning_rate'] for res in results]
+    n_estimators = [res[0]['n_estimators'] for res in results]
+    rmses = [res[1] for res in results]
+
+    # Create subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+
+    # Plot RMSE vs max_depth
+    axes[0].scatter(max_depths, rmses, color='b')
+    axes[0].set_title('RMSE vs Max Depth')
+    axes[0].set_xlabel('Max Depth')
+    axes[0].set_ylabel('RMSE')
+
+    # Plot RMSE vs learning_rate
+    axes[1].scatter(learning_rates, rmses, color='r')
+    axes[1].set_title('RMSE vs Learning Rate')
+    axes[1].set_xlabel('Learning Rate')
+    axes[1].set_ylabel('RMSE')
+
+    # Plot RMSE vs n_estimators
+    axes[2].scatter(n_estimators, rmses, color='g')
+    axes[2].set_title('RMSE vs Number of Estimators')
+    axes[2].set_xlabel('Number of Estimators')
+    axes[2].set_ylabel('RMSE')
+
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == '__main__':
