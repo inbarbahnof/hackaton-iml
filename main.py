@@ -69,7 +69,7 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series,
         plt.grid(True)
 
         # Save plot to file
-        plot_filename = os.path.join(output_path, f'{feature}_vs_price.png')
+        plot_filename = os.path.join(output_path, f'{feature}_vs_people_on_bus.png')
         plt.savefig(plot_filename)
         plt.close()
 
@@ -277,19 +277,7 @@ if __name__ == '__main__':
     logging.info("preprocessing train...")
     X_train, X_test, y_train, y_test = preprocessing_baseline(x_base_line, y_base_line)
 
-    # feature evaluation
-    # feature_evaluation(X_train, y_train)
-
     # 3. train a model
-    # logging.info("training...")
-    # mse_linear = linear_regression(X_train, X_test, y_train, y_test)
-    # print('Decision linear_regression')
-    # print(f'Mean Squared Error: {mse_linear}')
-    #
-    # mse_trees = desition_trees(X_train, X_test, y_train, y_test)
-    # print('Decision Tree Regression')
-    # print(f'Mean Squared Error: {mse_trees}')
-
     mse_poly = polynomial_fitting(X_train, X_test, y_train, y_test)
     print('Decision polynomial_fitting')
     print(f'Mean Squared Error: {mse_poly}')
