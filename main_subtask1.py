@@ -21,6 +21,26 @@ X_TRIP = "data/X_trip_duration.csv"
 ENCODER = "windows-1255"
 RANDOM_STATE = 42
 BASE_LINE_SAMPLE_SIZE = 0.05
+X_COL = ['trip_id',
+ 'part',
+ 'trip_id_unique_station',
+ 'trip_id_unique',
+ 'line_id',
+ 'direction',
+ 'alternative',
+ 'cluster',
+ 'station_index',
+ 'station_id',
+ 'station_name',
+ 'arrival_time',
+ 'door_closing_time',
+ 'arrival_is_estimated',
+ 'latitude',
+ 'longitude',
+ 'passengers_continue',
+ 'mekadem_nipuach_luz',
+ 'passengers_continue_menupach']
+
 
 """
 usage:
@@ -86,15 +106,15 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = "featur
         plt.close()
 
 
-def load_data(train_path, passenger_path):
+def load_data(train_path, passenger_path,include_baseline = False):
     train_df = pd.read_csv(train_path, encoding=ENCODER)
-    passenger_df = pd.read_csv(passenger_path, encoding=ENCODER)
-    sample_size = BASE_LINE_SAMPLE_SIZE # Adjust as needed
-    baseline = train_df.sample(frac=sample_size, random_state=RANDOM_STATE)
-    remaining_data = train_df.drop(baseline.index)
-    X_train = baseline[passenger_df.columns]
-    y_train = baseline["passengers_up"]
-    return X_train, y_train
+    test_df = pd.read_csv(passenger_path, encoding=ENCODER)
+    if include_baseline:
+        sample_size = BASE_LINE_SAMPLE_SIZE # Adjust as needed
+        baseline = train_df.sample(frac=sample_size, random_state=RANDOM_STATE)
+        remaining_data = train_df.drop(baseline.index)
+        remaining_data.to_csv("remaining_data.csv")
+    return train_df,test_df
 
 
 def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
@@ -314,20 +334,10 @@ def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
     return results
 
 
-def preprocessing_data():
-    train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
-    x_passenger = pd.read_csv(X_PASSENGER, encoding=ENCODER)
-    sample_size = 0.05  # 5% of the data
-    xgboost_sample_size = 0.15
-    baseline = train_bus.sample(frac=sample_size, random_state=RANDOM_STATE)
-    remaining_data = train_bus.drop(baseline.index)
-
-    xgboost_sample = remaining_data.sample(frac=xgboost_sample_size, random_state=RANDOM_STATE)
-    xgboost_X = xgboost_sample[x_passenger.columns]
-    xgboost_y = xgboost_sample["passengers_up"]
-    remaining_data = remaining_data.drop(xgboost_sample.index)
-
-    xgboost_sample_test = xgboost_sample.copy()
+def preprocessing_data(X):
+    xgboost_X = X[X_COL]
+    xgboost_y = X["passengers_up"]
+    xgboost_sample_test = X.copy()
 
     xgboost_sample_test['station_name'] = xgboost_sample_test['station_name'].str.split(r'[ /\\]')
     xgboost_X_exploded = xgboost_sample_test.explode('station_name').reset_index(drop=True)
@@ -396,6 +406,7 @@ def preprocessing_data():
                                                            random_state=RANDOM_STATE)
     return X_train, X_test, y_train, y_test
 
+
 if __name__ == '__main__':
     # parser = argparse.ArgumentParser(description="XGBoost model training and evaluation")
     # parser.add_argument('--training_set', type=str, required=True,
@@ -410,6 +421,7 @@ if __name__ == '__main__':
     #
     # # Preprocess data
     # X_train, X_test, y_train, y_test = preprocessing_data(X, y)
+
     X_train, X_test, y_train, y_test = preprocessing_data()
 
     result = xg_boost(X_train, X_test, y_train, y_test)

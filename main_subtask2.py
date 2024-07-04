@@ -49,7 +49,26 @@ WORDS_WEIGHT = ['אצ"ל',
                 'רבי',
                 'רוטשילד']
 
-
+X_COL = ['trip_id',
+ 'part',
+ 'trip_id_unique_station',
+ 'trip_id_unique',
+ 'line_id',
+ 'direction',
+ 'alternative',
+ 'cluster',
+ 'station_index',
+ 'station_id',
+ 'station_name',
+ 'arrival_time',
+ 'door_closing_time',
+ 'arrival_is_estimated',
+ 'latitude',
+ 'longitude',
+ 'passengers_up',
+ 'passengers_continue',
+ 'mekadem_nipuach_luz',
+ 'passengers_continue_menupach']
 def feature_evaluation(X: pd.DataFrame, y: pd.Series,
                        output_path: str = "feature_evaluation") -> NoReturn:
     """
@@ -282,7 +301,7 @@ if __name__ == '__main__':
     dur_for_xboost = train_bus[train_bus["trip_id_unique"].isin(lines_for_xboost)]
     dur_remaining = train_bus[~train_bus["trip_id_unique"].isin(lines_for_xboost)]
 
-    dur_baseline = dur_baseline[x_trip_duration.columns]
+    dur_baseline = dur_baseline[X_COL]
     dur_labels = __creating_labels(dur_baseline)
 
     # 2. preprocess the training set
