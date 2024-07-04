@@ -86,7 +86,18 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = "featur
         plt.close()
 
 
-def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
+def load_data(train_path, passenger_path):
+    train_df = pd.read_csv(train_path, encoding=ENCODER)
+    passenger_df = pd.read_csv(passenger_path, encoding=ENCODER)
+    sample_size = BASE_LINE_SAMPLE_SIZE # Adjust as needed
+    baseline = train_df.sample(frac=sample_size, random_state=RANDOM_STATE)
+    remaining_data = train_df.drop(baseline.index)
+    X_train = baseline[passenger_df.columns]
+    y_train = baseline["passengers_up"]
+    return X_train, y_train
+
+
+def preprocessing_data(X: pd.DataFrame, y: pd.Series):
     # Save the trip_id_unique_station column
     trip_id_unique_station = X["trip_id_unique_station"].copy()
 
@@ -305,14 +316,19 @@ def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="XGBoost model training and evaluation")
-    parser.add_argument('--training_set', type=str, required=True,
-                        help="Path to the training set CSV file")
-    parser.add_argument('--passenger_set', type=str, required=True,
-                        help="Path to the passenger data CSV file")
-    parser.add_argument('--out', type=str, required=True,
-                        help="Path to save the output (predictions or results)")
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser(description="XGBoost model training and evaluation")
+    # parser.add_argument('--training_set', type=str, required=True,
+    #                     help="Path to the training set CSV file")
+    # parser.add_argument('--passenger_set', type=str, required=True,
+    #                     help="Path to the passenger data CSV file")
+    # parser.add_argument('--out', type=str, required=True,
+    #                     help="Path to save the output (predictions or results)")
+    # args = parser.parse_args()
+    #
+    # X, y = load_data(args.training_set, args.passenger_set)
+    #
+    # # Preprocess data
+    # X_train, X_test, y_train, y_test = preprocessing_data(X, y)
 
     # 1. load the training set (args.training_set)
     train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
@@ -326,7 +342,7 @@ if __name__ == '__main__':
 
     # 2. preprocess the training set
     logging.info("preprocessing train...")
-    X_train, X_test, y_train, y_test = preprocessing_baseline(x_base_line, y_base_line)
+    X_train, X_test, y_train, y_test = preprocessing_data(x_base_line, y_base_line)
 
     # feature evaluation
     # feature_evaluation(X_train, y_train)
