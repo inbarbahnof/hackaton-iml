@@ -128,14 +128,15 @@ def linear_regression(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.S
 
     # Evaluate using eval_boardings
     mse_board = eval.eval_duration(predictions_df, ground_truth_df)
+    csv_output(y_pred, X_test['trip_id_unique'])
     return mse_board
 
 
-def csv_output(mse: float, passengers_up: pd.Series, trip_id_unique_station):
+def csv_output(passengers_up: pd.Series, trip_id_unique_station):
     # Create DataFrame with predictions
     predictions_df = pd.DataFrame({
-        'trip_id_unique_station': trip_id_unique_station,
-        'passengers_up': passengers_up.round()
+        'trip_id_unique': trip_id_unique_station,
+        'trip_duration_in_minutes': passengers_up.round()
     })
 
     # Save predictions to CSV file
