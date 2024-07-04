@@ -1,5 +1,6 @@
 import os
 import logging
+import argparse
 import xgboost as xgb
 from typing import NoReturn
 import pandas as pd
@@ -19,6 +20,7 @@ X_PASSENGER = "data/X_passengers_up.csv"
 X_TRIP = "data/X_trip_duration.csv"
 ENCODER = "windows-1255"
 RANDOM_STATE = 42
+BASE_LINE_SAMPLE_SIZE = 0.05
 
 """
 usage:
@@ -303,19 +305,20 @@ def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
 
 
 if __name__ == '__main__':
-    # parser = ArgumentParser()
-    # parser.add_argument('--training_set', type=str, required=True,
-    #                     help="path to the training set")
-    # parser.add_argument('--test_set', type=str, required=True,
-    #                     help="path to the test set")
-    # parser.add_argument('--out', type=str, required=True,
-    #                     help="path of the output file as required in the task description")
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="XGBoost model training and evaluation")
+    parser.add_argument('--training_set', type=str, required=True,
+                        help="Path to the training set CSV file")
+    parser.add_argument('--passenger_set', type=str, required=True,
+                        help="Path to the passenger data CSV file")
+    parser.add_argument('--out', type=str, required=True,
+                        help="Path to save the output (predictions or results)")
+    args = parser.parse_args()
 
     # 1. load the training set (args.training_set)
     train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
     x_passenger = pd.read_csv(X_PASSENGER, encoding=ENCODER)
-    sample_size = 0.05  # 5% of the data
+
+    sample_size = BASE_LINE_SAMPLE_SIZE  # 5% of the data
     baseline = train_bus.sample(frac=sample_size, random_state=RANDOM_STATE)
     remaining_data = train_bus.drop(baseline.index)
     x_base_line = baseline[x_passenger.columns]
