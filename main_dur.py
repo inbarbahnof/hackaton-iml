@@ -140,7 +140,7 @@ def csv_output(passengers_up: pd.Series, trip_id_unique_station):
     })
 
     # Save predictions to CSV file
-    predictions_df.to_csv('trip_duration_in_minutes_prediction.csv', index=False)
+    predictions_df.to_csv('trip_duration_predictions.csv', index=False)
 
 
 def __creating_labels(dur_baseline):
@@ -178,7 +178,7 @@ if __name__ == '__main__':
 
     # 3. train a model
     mse_poly = linear_regression(X_train, X_test, y_train, y_test)
-    print('Decision polynomial_fitting')
+    print('Decision linear_regression')
     print(f'Mean Squared Error: {mse_poly}')
 
     # 4. load the test set (args.test_set)
