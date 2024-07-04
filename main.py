@@ -303,6 +303,14 @@ def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
 
 
 if __name__ == '__main__':
+    # parser = ArgumentParser()
+    # parser.add_argument('--training_set', type=str, required=True,
+    #                     help="path to the training set")
+    # parser.add_argument('--test_set', type=str, required=True,
+    #                     help="path to the test set")
+    # parser.add_argument('--out', type=str, required=True,
+    #                     help="path of the output file as required in the task description")
+    # args = parser.parse_args()
 
     # 1. load the training set (args.training_set)
     train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
