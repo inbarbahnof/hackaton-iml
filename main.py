@@ -257,8 +257,18 @@ def polynomial_fitting(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.
 
     # Evaluate using eval_boardings
     mse_board = eval.eval_boardings(predictions_df, ground_truth_df)
+    csv_output(mse_board, y_pred_poly, X_test['trip_id_unique_station'])
     return mse_board
 
+def csv_output(mse:float ,passengers_up: pd.Series, trip_id_unique_station):
+    # Create DataFrame with predictions
+    predictions_df = pd.DataFrame({
+        'trip_id_unique_station': trip_id_unique_station,
+        'passengers_up': passengers_up.round()
+    })
+
+    # Save predictions to CSV file
+    predictions_df.to_csv('passengers_up_predictions.csv', index=False)
 
 if __name__ == '__main__':
     # parser = ArgumentParser()
@@ -287,15 +297,6 @@ if __name__ == '__main__':
     feature_evaluation(X_train, y_train)
 
     # 3. train a model
-    logging.info("training...")
-    mse_linear = linear_regression(X_train, X_test, y_train, y_test)
-    print('Decision linear_regression')
-    print(f'Mean Squared Error: {mse_linear}')
-
-    mse_trees = desition_trees(X_train, X_test, y_train, y_test)
-    print('Decision Tree Regression')
-    print(f'Mean Squared Error: {mse_trees}')
-
     mse_poly = polynomial_fitting(X_train, X_test, y_train, y_test)
     print('Decision polynomial_fitting')
     print(f'Mean Squared Error: {mse_poly}')
