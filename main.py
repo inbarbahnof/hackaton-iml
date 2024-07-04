@@ -1,6 +1,6 @@
 import os
-from argparse import ArgumentParser
 import logging
+import xgboost as xgb
 from typing import NoReturn
 import pandas as pd
 import numpy as np
@@ -270,15 +270,39 @@ def csv_output(mse:float ,passengers_up: pd.Series, trip_id_unique_station):
     # Save predictions to CSV file
     predictions_df.to_csv('passengers_up_predictions.csv', index=False)
 
+
+def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
+             y_test: pd.Series):
+    results = []
+
+    # Define parameter grids to iterate over
+    parameters = [
+        {'max_depth': 3, 'learning_rate': 0.1, 'n_estimators': 100},
+        {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 100},
+        {'max_depth': 5, 'learning_rate': 0.05, 'n_estimators': 100},
+        {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 200},
+        {'max_depth': 7, 'learning_rate': 0.1, 'n_estimators': 100}
+    ]
+
+    for params in parameters:
+        # Create XGBoost model
+        model = xgb.XGBRegressor(objective='reg:squarederror', eval_metric='rmse', **params)
+
+        # Train the model
+        model.fit(X_train, y_train)
+
+        # Predict on test set
+        y_pred = model.predict(X_test)
+
+        # Calculate RMSE
+        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        results.append((params, rmse))
+
+    # Return results for further analysis or selection
+    return results
+
+
 if __name__ == '__main__':
-    # parser = ArgumentParser()
-    # parser.add_argument('--training_set', type=str, required=True,
-    #                     help="path to the training set")
-    # parser.add_argument('--test_set', type=str, required=True,
-    #                     help="path to the test set")
-    # parser.add_argument('--out', type=str, required=True,
-    #                     help="path of the output file as required in the task description")
-    # args = parser.parse_args()
 
     # 1. load the training set (args.training_set)
     train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
@@ -294,19 +318,11 @@ if __name__ == '__main__':
     X_train, X_test, y_train, y_test = preprocessing_baseline(x_base_line, y_base_line)
 
     # feature evaluation
-    feature_evaluation(X_train, y_train)
+    # feature_evaluation(X_train, y_train)
 
-    # 3. train a model
-    mse_poly = polynomial_fitting(X_train, X_test, y_train, y_test)
-    print('Decision polynomial_fitting')
-    print(f'Mean Squared Error: {mse_poly}')
+    # mse_poly = polynomial_fitting(X_train, X_test, y_train, y_test)
+    # print('Decision polynomial_fitting')
+    # print(f'Mean Squared Error: {mse_poly}')
 
-    # 4. load the test set (args.test_set)
-    # 5. preprocess the test set
-    logging.info("preprocessing test...")
+    result = xg_boost( X_train, X_test, y_train, y_test)
 
-    # 6. predict the test set using the trained model
-    logging.info("predicting...")
-
-    # 7. save the predictions to args.out
-    # logging.info("predictions saved to {}".format(args.out))
