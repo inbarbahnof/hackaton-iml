@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 import logging
 from typing import NoReturn
 import pandas as pd
+import xgboost as xgb
 import numpy as np
 import matplotlib.pyplot as plt
 import sklearn.model_selection as sk
@@ -22,31 +23,31 @@ X_TRIP = "data/X_trip_duration.csv"
 ENCODER = "windows-1255"
 RANDOM_STATE = 42
 WORDS_WEIGHT = ['אצ"ל',
- 'ביאליק',
- 'ההגנה',
- 'חזון',
- 'לוינסקי',
- 'סוקולוב',
- 'עקיבא',
- 'קניון',
- 'רבי',
- 'רכבת',
- 'אצ"ל',
- 'ביאליק',
- 'בלפור',
- 'גשר',
- 'ההגנה',
- 'המלך',
- "ז'בוטינסקי",
- 'חזון',
- 'יוספטל',
- 'כצנלסון',
- 'לוינסקי',
- 'סוקולוב',
- 'עקיבא',
- 'קניון',
- 'רבי',
- 'רוטשילד']
+                'ביאליק',
+                'ההגנה',
+                'חזון',
+                'לוינסקי',
+                'סוקולוב',
+                'עקיבא',
+                'קניון',
+                'רבי',
+                'רכבת',
+                'אצ"ל',
+                'ביאליק',
+                'בלפור',
+                'גשר',
+                'ההגנה',
+                'המלך',
+                "ז'בוטינסקי",
+                'חזון',
+                'יוספטל',
+                'כצנלסון',
+                'לוינסקי',
+                'סוקולוב',
+                'עקיבא',
+                'קניון',
+                'רבי',
+                'רוטשילד']
 
 
 def feature_evaluation(X: pd.DataFrame, y: pd.Series,
@@ -118,6 +119,7 @@ def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
                                                            random_state=RANDOM_STATE)
     return X_train, X_test, y_train, y_test
 
+
 def calculate_approx_line_length(group):
     coords = list(zip(group['latitude'], group['longitude']))
     total_length = 0.0
@@ -127,28 +129,42 @@ def calculate_approx_line_length(group):
 
 
 def preprocessing_main_model(X: pd.DataFrame, y: pd.Series):
-    f_station_cnt = X.groupby("trip_id_unique")["trip_id_unique_station"].nunique().to_frame("station_cnt")
-    f_total_passenger = X.groupby("trip_id_unique")["passengers_up"].sum().to_frame("total_passenger")
-    f_mean_passenger = X.groupby("trip_id_unique")["passengers_up"].mean().to_frame("mean_passenger")
-    f_mean_passenger_c = X.groupby("trip_id_unique")["passengers_continue"].mean().to_frame("mean_passenger_c")
+    f_station_cnt = X.groupby("trip_id_unique")["trip_id_unique_station"].nunique().to_frame(
+        "station_cnt")
+    f_total_passenger = X.groupby("trip_id_unique")["passengers_up"].sum().to_frame(
+        "total_passenger")
+    f_mean_passenger = X.groupby("trip_id_unique")["passengers_up"].mean().to_frame(
+        "mean_passenger")
+    f_mean_passenger_c = X.groupby("trip_id_unique")["passengers_continue"].mean().to_frame(
+        "mean_passenger_c")
     f_start_time = X.groupby("trip_id_unique")["arrival_time"].min().to_frame("start_time")
     f_start_time['start_time'] = pd.to_datetime(f_start_time['start_time']).dt.hour
-    features = pd.concat([f_station_cnt, f_total_passenger, f_mean_passenger, f_mean_passenger_c, f_start_time],axis=1)
-    features = features.merge(X[["trip_id_unique", "cluster", "direction", "mekadem_nipuach_luz"]],on="trip_id_unique")    
+    features = pd.concat(
+        [f_station_cnt, f_total_passenger, f_mean_passenger, f_mean_passenger_c, f_start_time],
+        axis=1)
+    features = features.merge(X[["trip_id_unique", "cluster", "direction", "mekadem_nipuach_luz"]],
+                              on="trip_id_unique")
     label_encoder = LabelEncoder()
     features['cluster'] = label_encoder.fit_transform(features['cluster'])
-    station_concat = X.groupby("trip_id_unique")["station_name"].agg(lambda x: ', '.join(x)).reset_index()
+    station_concat = X.groupby("trip_id_unique")["station_name"].agg(
+        lambda x: ', '.join(x)).reset_index()
     for i, word in enumerate(WORDS_WEIGHT, start=1):
-        station_concat[f'x_{i}'] = station_concat['station_name'].str.contains(word, regex=False).astype(int)
+        station_concat[f'x_{i}'] = station_concat['station_name'].str.contains(word,
+                                                                               regex=False).astype(
+            int)
     del station_concat['station_name']
-    features = features.merge(station_concat,on = "trip_id_unique")
+    features = features.merge(station_concat, on="trip_id_unique")
     features = features.drop_duplicates()
     # Group by 'line_id' and calculate approximate line length
-    line_lengths_approx = features.groupby('trip_id_unique').apply(calculate_approx_line_length).reset_index(name='line_length_approx')
-    features = features.merge(line_lengths_approx,on = "trip_id_unique")
-    X_train, X_test, y_train, y_test = sk.train_test_split(features.drop(columns = ["trip_id_unique"]), y.drop(columns = ["trip_id_unique"]), train_size=0.75,
-                                                        random_state=RANDOM_STATE)
-    return  X_train, X_test, y_train, y_test 
+    line_lengths_approx = X.groupby('trip_id_unique').apply(
+        calculate_approx_line_length).reset_index(name='line_length_approx')
+    features = features.merge(line_lengths_approx, on="trip_id_unique")
+    X_train, X_test, y_train, y_test = sk.train_test_split(
+        features.drop(columns=["trip_id_unique"]), y.drop(columns=["trip_id_unique"]),
+        train_size=0.75,
+        random_state=RANDOM_STATE)
+    return X_train, X_test, y_train, y_test
+
 
 def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
              y_test: pd.Series):
@@ -179,6 +195,7 @@ def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
 
     # Return results for further analysis or selection
     return results
+
 
 def linear_regression(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
                       y_test: pd.Series):
@@ -231,6 +248,7 @@ def csv_output(passengers_up: pd.Series, trip_id_unique_station):
     # Save predictions to CSV file
     predictions_df.to_csv('trip_duration_predictions.csv', index=False)
 
+
 def __creating_labels(dur_baseline):
     min_max_time = dur_baseline.groupby("trip_id_unique")["arrival_time"].agg(
         {"min", "max"}).reset_index()
@@ -239,6 +257,7 @@ def __creating_labels(dur_baseline):
     min_max_time["delta"] = (min_max_time["max"] - min_max_time["min"]) / pd.Timedelta(1, "m")
     min_max_time["delta"] = round(min_max_time["delta"], 2)
     return min_max_time[["trip_id_unique", "delta"]]
+
 
 if __name__ == '__main__':
     # parser = ArgumentParser()
@@ -257,9 +276,9 @@ if __name__ == '__main__':
                                                                               random_state=RANDOM_STATE)
     dur_baseline = train_bus[train_bus["trip_id_unique"].isin(lines_for_baseline)]
 
-
     dur_remaining = train_bus[~train_bus["trip_id_unique"].isin(lines_for_baseline)]
-    lines_for_xboost = dur_remaining["trip_id_unique"].drop_duplicates().sample(frac=0.28,random_state=RANDOM_STATE)
+    lines_for_xboost = dur_remaining["trip_id_unique"].drop_duplicates().sample(frac=0.28,
+                                                                                random_state=RANDOM_STATE)
     dur_for_xboost = train_bus[train_bus["trip_id_unique"].isin(lines_for_xboost)]
     dur_remaining = train_bus[~train_bus["trip_id_unique"].isin(lines_for_xboost)]
 
@@ -269,15 +288,15 @@ if __name__ == '__main__':
     # 2. preprocess the training set
     logging.info("preprocessing train...")
     X_train, X_test, y_train, y_test = preprocessing_baseline(dur_baseline, dur_labels)
-        # 3. train a model
+    # 3. train a model
     mse_poly = linear_regression(X_train, X_test, y_train, y_test)
     print('Decision linear_regression')
     print(f'Mean Squared Error: {mse_poly}')
 
-    X_train, X_test, y_train, y_test = preprocessing_baseline(dur_for_xboost, __creating_labels(dur_for_xboost))
-    result = xg_boost( X_train, X_test, y_train, y_test )
+    X_train, X_test, y_train, y_test = preprocessing_main_model(dur_for_xboost,
+                                                                __creating_labels(dur_for_xboost))
+    result = xg_boost(X_train, X_test, y_train, y_test)
     print(f"X boost result - {result}")
-
 
     # 4. load the test set (args.test_set)
     # 5. preprocess the test set

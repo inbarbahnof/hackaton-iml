@@ -97,7 +97,7 @@ def load_data(train_path, passenger_path):
     return X_train, y_train
 
 
-def preprocessing_data(X: pd.DataFrame, y: pd.Series):
+def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
     # Save the trip_id_unique_station column
     trip_id_unique_station = X["trip_id_unique_station"].copy()
 
@@ -311,41 +311,90 @@ def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
         rmse = mean_squared_error(y_test, y_pred, squared=False)
         results.append((params, rmse))
 
-    # Return results for further analysis or selection
-    plot_results(results)
     return results
 
-def plot_results(results):
-    # Extract parameter values and RMSE
-    max_depths = [res[0]['max_depth'] for res in results]
-    learning_rates = [res[0]['learning_rate'] for res in results]
-    n_estimators = [res[0]['n_estimators'] for res in results]
-    rmses = [res[1] for res in results]
 
-    # Create subplots
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+def preprocessing_data():
+    train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
+    x_passenger = pd.read_csv(X_PASSENGER, encoding=ENCODER)
+    sample_size = 0.05  # 5% of the data
+    xgboost_sample_size = 0.15
+    baseline = train_bus.sample(frac=sample_size, random_state=RANDOM_STATE)
+    remaining_data = train_bus.drop(baseline.index)
 
-    # Plot RMSE vs max_depth
-    axes[0].scatter(max_depths, rmses, color='b')
-    axes[0].set_title('RMSE vs Max Depth')
-    axes[0].set_xlabel('Max Depth')
-    axes[0].set_ylabel('RMSE')
+    xgboost_sample = remaining_data.sample(frac=xgboost_sample_size, random_state=RANDOM_STATE)
+    xgboost_X = xgboost_sample[x_passenger.columns]
+    xgboost_y = xgboost_sample["passengers_up"]
+    remaining_data = remaining_data.drop(xgboost_sample.index)
 
-    # Plot RMSE vs learning_rate
-    axes[1].scatter(learning_rates, rmses, color='r')
-    axes[1].set_title('RMSE vs Learning Rate')
-    axes[1].set_xlabel('Learning Rate')
-    axes[1].set_ylabel('RMSE')
+    xgboost_sample_test = xgboost_sample.copy()
 
-    # Plot RMSE vs n_estimators
-    axes[2].scatter(n_estimators, rmses, color='g')
-    axes[2].set_title('RMSE vs Number of Estimators')
-    axes[2].set_xlabel('Number of Estimators')
-    axes[2].set_ylabel('RMSE')
+    xgboost_sample_test['station_name'] = xgboost_sample_test['station_name'].str.split(r'[ /\\]')
+    xgboost_X_exploded = xgboost_sample_test.explode('station_name').reset_index(drop=True)
+    word_count = xgboost_X_exploded.groupby("station_name")["passengers_up"].describe().sort_values(
+        by="50%")
 
-    plt.tight_layout()
-    plt.show()
+    top_pop_words = xgboost_X_exploded.groupby("station_name")[
+        "trip_id_unique_station"].nunique().sort_values().tail(100)
 
+    word_analysis = \
+    xgboost_X_exploded[xgboost_X_exploded["station_name"].isin(top_pop_words.index)].groupby(
+        "station_name")["passengers_up"].describe()
+    weight_words = list(word_analysis[word_analysis["75%"] > 2].index)
+    weight_words = weight_words + list(word_analysis[word_analysis["50%"] > 0].index)
+
+    for i, word in enumerate(weight_words, start=1):
+        xgboost_X[f'x_{i}'] = xgboost_X['station_name'].str.contains(word, regex=False).astype(int)
+
+    label_encoder = LabelEncoder()
+    xgboost_X['cluster'] = label_encoder.fit_transform(xgboost_X['cluster'])
+    xgboost_X['alternative'] = label_encoder.fit_transform(xgboost_X['alternative'])
+    xgboost_X['part'] = label_encoder.fit_transform(xgboost_X['part'])
+    xgboost_X['station_id'] = label_encoder.fit_transform(xgboost_X['station_id'])
+    xgboost_X['trip_id_unique'] = label_encoder.fit_transform(xgboost_X['trip_id_unique'])
+
+    xgboost_X['arrival_is_estimated'] = xgboost_X['arrival_is_estimated'].astype(int)
+
+    xgboost_X['door_closing_time'] = pd.to_datetime(xgboost_X['door_closing_time'])
+    xgboost_X['arrival_time'] = pd.to_datetime(xgboost_X['arrival_time'])
+
+    # Create door delta columns
+    xgboost_X["door_close_delta"] = None
+    mask_notna = xgboost_X["door_closing_time"].notna()
+    xgboost_X.loc[mask_notna, 'door_close_delta'] = (
+                xgboost_X.loc[mask_notna, 'door_closing_time'] - xgboost_X.loc[
+            mask_notna, 'arrival_time']).dt.total_seconds()
+    door_delta_mean = xgboost_X["door_close_delta"].mean()
+    xgboost_X["door_close_delta"] = xgboost_X["door_close_delta"].fillna(door_delta_mean)
+
+    # Categorize arrival time
+    arrival_hours = xgboost_X['arrival_time'].dt.hour
+    percentiles = arrival_hours.describe(percentiles=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
+    percentile_values = percentiles.loc[
+        ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%']
+    ].values
+    labels = [f'{int(value)}' for value in percentile_values]
+    labels.insert(0, '0')
+    xgboost_X['arrival_time_label'] = pd.cut(arrival_hours,
+                                             bins=[0] + list(percentile_values) + [24],
+                                             labels=labels,
+                                             include_lowest=True)
+
+    index_to_drop = xgboost_y[xgboost_y > 30].index
+    xgboost_y = xgboost_y.drop(index_to_drop)
+    xgboost_X = xgboost_X.drop(index_to_drop)
+
+    xgboost_X["arrival_time_label"] = xgboost_X["arrival_time_label"].astype(int)
+
+    del xgboost_X["arrival_time"]
+    del xgboost_X["door_closing_time"]
+    del xgboost_X["station_name"]
+    del xgboost_X["trip_id_unique_station"]
+
+    X_train, X_test, y_train, y_test = sk.train_test_split(xgboost_X, xgboost_y,
+                                                           train_size=0.75,
+                                                           random_state=RANDOM_STATE)
+    return X_train, X_test, y_train, y_test
 
 if __name__ == '__main__':
     # parser = argparse.ArgumentParser(description="XGBoost model training and evaluation")
@@ -361,20 +410,10 @@ if __name__ == '__main__':
     #
     # # Preprocess data
     # X_train, X_test, y_train, y_test = preprocessing_data(X, y)
+    X_train, X_test, y_train, y_test = preprocessing_data()
 
-    # 1. load the training set (args.training_set)
-    train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
-    x_passenger = pd.read_csv(X_PASSENGER, encoding=ENCODER)
-
-    sample_size = BASE_LINE_SAMPLE_SIZE  # 5% of the data
-    baseline = train_bus.sample(frac=sample_size, random_state=RANDOM_STATE)
-    remaining_data = train_bus.drop(baseline.index)
-    x_base_line = baseline[x_passenger.columns]
-    y_base_line = baseline["passengers_up"]
-
-    # 2. preprocess the training set
-    logging.info("preprocessing train...")
-    X_train, X_test, y_train, y_test = preprocessing_data(x_base_line, y_base_line)
+    result = xg_boost(X_train, X_test, y_train, y_test)
+    print(result)
 
     # feature evaluation
     # feature_evaluation(X_train, y_train)
@@ -382,6 +421,4 @@ if __name__ == '__main__':
     # mse_poly = polynomial_fitting(X_train, X_test, y_train, y_test)
     # print('Decision polynomial_fitting')
     # print(f'Mean Squared Error: {mse_poly}')
-
-    result = xg_boost( X_train, X_test, y_train, y_test)
 
