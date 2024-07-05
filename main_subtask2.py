@@ -22,6 +22,10 @@ X_PASSENGER = "data/X_passengers_up.csv"
 X_TRIP = "data/X_trip_duration.csv"
 ENCODER = "windows-1255"
 RANDOM_STATE = 42
+LABEL = "trip_duration_in_minutes"
+MAX_DEPTH = 3
+LEARNING_RATE = 0.1
+N_ESTIMATORS = 100
 WORDS_WEIGHT = ['אצ"ל',
                 'ביאליק',
                 'ההגנה',
@@ -147,7 +151,9 @@ def calculate_approx_line_length(group):
     return total_length
 
 
-def preprocessing_main_model(X: pd.DataFrame, y: pd.Series):
+def preprocessing_main_model(X: pd.DataFrame):
+    print(X.columns)
+    X['arrival_time'] = pd.to_datetime(X['arrival_time'], errors='coerce')
     f_station_cnt = X.groupby("trip_id_unique")["trip_id_unique_station"].nunique().to_frame(
         "station_cnt")
     f_total_passenger = X.groupby("trip_id_unique")["passengers_up"].sum().to_frame(
@@ -157,6 +163,7 @@ def preprocessing_main_model(X: pd.DataFrame, y: pd.Series):
     f_mean_passenger_c = X.groupby("trip_id_unique")["passengers_continue"].mean().to_frame(
         "mean_passenger_c")
     f_start_time = X.groupby("trip_id_unique")["arrival_time"].min().to_frame("start_time")
+ 
     f_start_time['start_time'] = pd.to_datetime(f_start_time['start_time']).dt.hour
     features = pd.concat(
         [f_station_cnt, f_total_passenger, f_mean_passenger, f_mean_passenger_c, f_start_time],
@@ -178,42 +185,40 @@ def preprocessing_main_model(X: pd.DataFrame, y: pd.Series):
     line_lengths_approx = X.groupby('trip_id_unique').apply(
         calculate_approx_line_length).reset_index(name='line_length_approx')
     features = features.merge(line_lengths_approx, on="trip_id_unique")
-    X_train, X_test, y_train, y_test = sk.train_test_split(
-        features.drop(columns=["trip_id_unique"]), y.drop(columns=["trip_id_unique"]),
-        train_size=0.75,
-        random_state=RANDOM_STATE)
-    return X_train, X_test, y_train, y_test
+    # X_train, X_test, y_train, y_test = sk.train_test_split(
+    #     features.drop(columns=["trip_id_unique"]), y.drop(columns=["trip_id_unique"]),
+    #     train_size=0.75,
+    #     random_state=RANDOM_STATE)
+    return features
 
 
-def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
-             y_test: pd.Series):
-    results = []
+def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series):
 
     # Define parameter grids to iterate over
-    parameters = [
-        {'max_depth': 3, 'learning_rate': 0.1, 'n_estimators': 100},
-        {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 100},
-        {'max_depth': 5, 'learning_rate': 0.05, 'n_estimators': 100},
-        {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 200},
-        {'max_depth': 7, 'learning_rate': 0.1, 'n_estimators': 100}
-    ]
-
-    for params in parameters:
+    # parameters = [
+    #     {'max_depth': 3, 'learning_rate': 0.1, 'n_estimators': 100},
+    #     {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 100},
+    #     {'max_depth': 5, 'learning_rate': 0.05, 'n_estimators': 100},
+    #     {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 200},
+    #     {'max_depth': 7, 'learning_rate': 0.1, 'n_estimators': 100}
+    # ]
+    params = {'max_depth': MAX_DEPTH, 'learning_rate': LEARNING_RATE, 'n_estimators': N_ESTIMATORS}
+    # for params in parameters:
         # Create XGBoost model
-        model = xgb.XGBRegressor(objective='reg:squarederror', eval_metric='rmse', **params)
+    model = xgb.XGBRegressor(objective='reg:squarederror', eval_metric='rmse', **params)
 
-        # Train the model
-        model.fit(X_train, y_train)
+    # Train the model
+    model.fit(X_train, y_train)
 
-        # Predict on test set
-        y_pred = model.predict(X_test)
+    # Predict on test set
+    y_pred = model.predict(X_test)
 
-        # Calculate RMSE
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
-        results.append((params, rmse))
-
+    # Calculate RMSE
+    # rmse = mean_squared_error(y_test, y_pred, squared=False)
+    # results.append((params, rmse))
+    return y_pred
     # Return results for further analysis or selection
-    return results
+    # return results
 
 
 def linear_regression(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
@@ -273,48 +278,67 @@ def __creating_labels(dur_baseline):
         {"min", "max"}).reset_index()
     min_max_time["max"] = pd.to_datetime(min_max_time["max"])
     min_max_time["min"] = pd.to_datetime(min_max_time["min"])
-    min_max_time["delta"] = (min_max_time["max"] - min_max_time["min"]) / pd.Timedelta(1, "m")
-    min_max_time["delta"] = round(min_max_time["delta"], 2)
-    return min_max_time[["trip_id_unique", "delta"]]
+    min_max_time[LABEL] = (min_max_time["max"] - min_max_time["min"]) / pd.Timedelta(1, "m")
+    min_max_time[LABEL] = round(min_max_time[LABEL], 2)
+    return min_max_time[["trip_id_unique", LABEL]]
 
+
+def load_data(train_path,test_path):
+    train_df = pd.read_csv(train_path, encoding=ENCODER)
+    test_df = pd.read_csv(test_path, encoding=ENCODER)
+    return train_df ,test_df
 
 if __name__ == '__main__':
-    # parser = ArgumentParser()
-    # parser.add_argument('--training_set', type=str, required=True,
-    #                     help="path to the training set")
-    # parser.add_argument('--test_set', type=str, required=True,
-    #                     help="path to the test set")
-    # parser.add_argument('--out', type=str, required=True,
-    #                     help="path of the output file as required in the task description")
-    # args = parser.parse_args()
+    parser = ArgumentParser()
+    parser.add_argument('--training_set', type=str, required=True,
+                        help="path to the training set")
+    parser.add_argument('--test_set', type=str, required=True,
+                        help="path to the test set")
+    parser.add_argument('--out', type=str, required=True,
+                        help="path of the output file as required in the task description")
+    args = parser.parse_args()
 
-    # 1. load the training set (args.training_set)
-    train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
-    x_trip_duration = pd.read_csv(X_TRIP, encoding=ENCODER)
-    lines_for_baseline = train_bus["trip_id_unique"].drop_duplicates().sample(frac=0.10,
-                                                                              random_state=RANDOM_STATE)
-    dur_baseline = train_bus[train_bus["trip_id_unique"].isin(lines_for_baseline)]
+    train, test = load_data(args.training_set, args.test_set)
 
-    dur_remaining = train_bus[~train_bus["trip_id_unique"].isin(lines_for_baseline)]
-    lines_for_xboost = dur_remaining["trip_id_unique"].drop_duplicates().sample(frac=0.28,
-                                                                                random_state=RANDOM_STATE)
-    dur_for_xboost = train_bus[train_bus["trip_id_unique"].isin(lines_for_xboost)]
-    dur_remaining = train_bus[~train_bus["trip_id_unique"].isin(lines_for_xboost)]
+    # train_bus = pd.read_csv(TRAIN_BUS_CSV_PATH, encoding=ENCODER)
+    # x_trip_duration = pd.read_csv(X_TRIP, encoding=ENCODER)
+    # lines_for_baseline = train_bus["trip_id_unique"].drop_duplicates().sample(frac=0.10,
+    #                                                                           random_state=RANDOM_STATE)
+    # dur_baseline = train_bus[train_bus["trip_id_unique"].isin(lines_for_baseline)]
 
-    dur_baseline = dur_baseline[X_COL]
-    dur_labels = __creating_labels(dur_baseline)
+    # dur_remaining = train_bus[~train_bus["trip_id_unique"].isin(lines_for_baseline)]
+    # lines_for_xboost = dur_remaining["trip_id_unique"].drop_duplicates().sample(frac=0.28,
+    #                                                                             random_state=RANDOM_STATE)
+    # dur_for_xboost = train_bus[train_bus["trip_id_unique"].isin(lines_for_xboost)]
+    # dur_remaining = train_bus[~train_bus["trip_id_unique"].isin(lines_for_xboost)]
+
+    # dur_baseline = dur_baseline[X_COL]
+    # dur_labels = (dur_baseline)
 
     # 2. preprocess the training set
     logging.info("preprocessing train...")
-    X_train, X_test, y_train, y_test = preprocessing_baseline(dur_baseline, dur_labels)
+    # X_train, X_test, y_train, y_test = preprocessing_baseline(dur_baseline, dur_labels)
     # 3. train a model
-    mse_poly = linear_regression(X_train, X_test, y_train, y_test)
-    print('Decision linear_regression')
-    print(f'Mean Squared Error: {mse_poly}')
+    # mse_poly = linear_regression(X_train, X_test, y_train, y_test)
+    # print('Decision linear_regression')
+    # print(f'Mean Squared Error: {mse_poly}')
+    train_labels = __creating_labels(train.copy())
+    train_data = preprocessing_main_model(train)
 
-    X_train, X_test, y_train, y_test = preprocessing_main_model(dur_for_xboost,
-                                                                __creating_labels(dur_for_xboost))
-    result = xg_boost(X_train, X_test, y_train, y_test)
+    train_data = train_data.merge(train_labels, on = "trip_id_unique")
+    train_data = train_data.drop_duplicates()
+    # print(train_data.head())
+    
+    test = preprocessing_main_model(test)
+    print("--------")
+    print(test.columns)
+    print(train_data.columns)
+    print("--------")
+    # print(len(train_data.drop(columns = "trip_id_unique")))
+    # print(len(train_data[LABEL]))
+    X_train,y_train = train_data.drop(columns = ["trip_id_unique",LABEL]) , train_data[LABEL]
+    X_test = test.drop(columns = "trip_id_unique")
+    result = xg_boost(X_train,X_test, y_train)
     print(f"X boost result - {result}")
 
     # 4. load the test set (args.test_set)
