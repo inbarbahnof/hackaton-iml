@@ -14,6 +14,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.tree import DecisionTreeRegressor
 import evaluation_scripts.eval_passengers_up as eval
+import chardet
 
 TRAIN_BUS_CSV_PATH = "data/train_bus_schedule.csv"
 X_PASSENGER = "data/X_passengers_up.csv"
@@ -21,6 +22,10 @@ X_TRIP = "data/X_trip_duration.csv"
 ENCODER = "windows-1255"
 RANDOM_STATE = 42
 BASE_LINE_SAMPLE_SIZE = 0.05
+MAX_DEPTH = 3
+LEARNING_RATE = 0.1
+N_ESTIMATORS = 100
+
 X_COL = ['trip_id',
  'part',
  'trip_id_unique_station',
@@ -40,6 +45,33 @@ X_COL = ['trip_id',
  'passengers_continue',
  'mekadem_nipuach_luz',
  'passengers_continue_menupach']
+
+WORDS_WEIGHT = ['אצ"ל',
+                'ביאליק',
+                'ההגנה',
+                'חזון',
+                'לוינסקי',
+                'סוקולוב',
+                'עקיבא',
+                'קניון',
+                'רבי',
+                'רכבת',
+                'אצ"ל',
+                'ביאליק',
+                'בלפור',
+                'גשר',
+                'ההגנה',
+                'המלך',
+                "ז'בוטינסקי",
+                'חזון',
+                'יוספטל',
+                'כצנלסון',
+                'לוינסקי',
+                'סוקולוב',
+                'עקיבא',
+                'קניון',
+                'רבי',
+                'רוטשילד']
 
 
 """
@@ -106,7 +138,15 @@ def feature_evaluation(X: pd.DataFrame, y: pd.Series, output_path: str = "featur
         plt.close()
 
 
+def detect_encoding(file_path):
+    with open(file_path, 'rb') as f:
+        result = chardet.detect(f.read())
+        return result['encoding']
+
 def load_data(train_path, passenger_path,include_baseline = False):
+    print("load_data")
+    # train_encoding = detect_encoding(train_path)
+    # test_encoding = detect_encoding(passenger_path)
     train_df = pd.read_csv(train_path, encoding=ENCODER)
     test_df = pd.read_csv(passenger_path, encoding=ENCODER)
     if include_baseline:
@@ -114,6 +154,7 @@ def load_data(train_path, passenger_path,include_baseline = False):
         baseline = train_df.sample(frac=sample_size, random_state=RANDOM_STATE)
         remaining_data = train_df.drop(baseline.index)
         remaining_data.to_csv("remaining_data.csv")
+    print("finish load")
     return train_df,test_df
 
 
@@ -304,56 +345,57 @@ def csv_output(mse:float ,passengers_up: pd.Series, trip_id_unique_station):
     predictions_df.to_csv('passengers_up_predictions.csv', index=False)
 
 
-def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series,
-             y_test: pd.Series):
+def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series):
     results = []
 
     # Define parameter grids to iterate over
-    parameters = [
-        {'max_depth': 3, 'learning_rate': 0.1, 'n_estimators': 100},
-        {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 100},
-        {'max_depth': 5, 'learning_rate': 0.05, 'n_estimators': 100},
-        {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 200},
-        {'max_depth': 7, 'learning_rate': 0.1, 'n_estimators': 100}
-    ]
+    # parameters = [
+    #     {'max_depth': 3, 'learning_rate': 0.1, 'n_estimators': 100},
+    #     {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 100},
+    #     {'max_depth': 5, 'learning_rate': 0.05, 'n_estimators': 100},
+    #     {'max_depth': 5, 'learning_rate': 0.1, 'n_estimators': 200},
+    #     {'max_depth': 7, 'learning_rate': 0.1, 'n_estimators': 100}
+    # ]
 
-    for params in parameters:
+    # for params in parameters:
         # Create XGBoost model
-        model = xgb.XGBRegressor(objective='reg:squarederror', eval_metric='rmse', **params)
+    params = {'max_depth': MAX_DEPTH, 'learning_rate': LEARNING_RATE, 'n_estimators': N_ESTIMATORS}
+    model = xgb.XGBRegressor(objective='reg:squarederror', eval_metric='rmse', **params)
+    # Train the model
+    model.fit(X_train, y_train)
+    # Predict on test set
+    y_pred = model.predict(X_test)
+    # Calculate RMSE
+    # rmse = mean_squared_error(y_test, y_pred, squared=False)
+    # results.append((params, rmse))
 
-        # Train the model
-        model.fit(X_train, y_train)
-
-        # Predict on test set
-        y_pred = model.predict(X_test)
-
-        # Calculate RMSE
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
-        results.append((params, rmse))
-
-    return results
+    return y_pred
 
 
-def preprocessing_data(X):
-    xgboost_X = X[X_COL]
-    xgboost_y = X["passengers_up"]
-    xgboost_sample_test = X.copy()
 
-    xgboost_sample_test['station_name'] = xgboost_sample_test['station_name'].str.split(r'[ /\\]')
-    xgboost_X_exploded = xgboost_sample_test.explode('station_name').reset_index(drop=True)
-    word_count = xgboost_X_exploded.groupby("station_name")["passengers_up"].describe().sort_values(
-        by="50%")
+def preprocessing_data(X, is_train):
+    if is_train:
+        xgboost_X =X[X_COL+["passengers_up"]]
+    else:
+        xgboost_X =X[X_COL]
+    # xgboost_y = X["passengers_up"]
+    # xgboost_sample_test = X.copy()
 
-    top_pop_words = xgboost_X_exploded.groupby("station_name")[
-        "trip_id_unique_station"].nunique().sort_values().tail(100)
+    # xgboost_sample_test['station_name'] = xgboost_sample_test['station_name'].str.split(r'[ /\\]')
+    # xgboost_X_exploded = xgboost_sample_test.explode('station_name').reset_index(drop=True)
+    # word_count = xgboost_X_exploded.groupby("station_name")["passengers_up"].describe().sort_values(
+    #     by="50%")
 
-    word_analysis = \
-    xgboost_X_exploded[xgboost_X_exploded["station_name"].isin(top_pop_words.index)].groupby(
-        "station_name")["passengers_up"].describe()
-    weight_words = list(word_analysis[word_analysis["75%"] > 2].index)
-    weight_words = weight_words + list(word_analysis[word_analysis["50%"] > 0].index)
+    # top_pop_words = xgboost_X_exploded.groupby("station_name")[
+    #     "trip_id_unique_station"].nunique().sort_values().tail(100)
 
-    for i, word in enumerate(weight_words, start=1):
+    # word_analysis = \
+    # xgboost_X_exploded[xgboost_X_exploded["station_name"].isin(top_pop_words.index)].groupby(
+    #     "station_name")["passengers_up"].describe()
+    # weight_words = list(word_analysis[word_analysis["75%"] > 2].index)
+    # weight_words = weight_words + list(word_analysis[word_analysis["50%"] > 0].index)
+
+    for i, word in enumerate(WORDS_WEIGHT, start=1):
         xgboost_X[f'x_{i}'] = xgboost_X['station_name'].str.contains(word, regex=False).astype(int)
 
     label_encoder = LabelEncoder()
@@ -362,9 +404,7 @@ def preprocessing_data(X):
     xgboost_X['part'] = label_encoder.fit_transform(xgboost_X['part'])
     xgboost_X['station_id'] = label_encoder.fit_transform(xgboost_X['station_id'])
     xgboost_X['trip_id_unique'] = label_encoder.fit_transform(xgboost_X['trip_id_unique'])
-
     xgboost_X['arrival_is_estimated'] = xgboost_X['arrival_is_estimated'].astype(int)
-
     xgboost_X['door_closing_time'] = pd.to_datetime(xgboost_X['door_closing_time'])
     xgboost_X['arrival_time'] = pd.to_datetime(xgboost_X['arrival_time'])
 
@@ -390,47 +430,33 @@ def preprocessing_data(X):
                                              labels=labels,
                                              include_lowest=True)
 
-    index_to_drop = xgboost_y[xgboost_y > 30].index
-    xgboost_y = xgboost_y.drop(index_to_drop)
-    xgboost_X = xgboost_X.drop(index_to_drop)
+    if is_train:
+        index_to_drop = xgboost_X["passengers_up"][xgboost_X["passengers_up"] > 30].index
+        xgboost_X = xgboost_X.drop(index_to_drop)
 
     xgboost_X["arrival_time_label"] = xgboost_X["arrival_time_label"].astype(int)
-
     del xgboost_X["arrival_time"]
     del xgboost_X["door_closing_time"]
     del xgboost_X["station_name"]
     del xgboost_X["trip_id_unique_station"]
-
-    X_train, X_test, y_train, y_test = sk.train_test_split(xgboost_X, xgboost_y,
-                                                           train_size=0.75,
-                                                           random_state=RANDOM_STATE)
-    return X_train, X_test, y_train, y_test
+    return xgboost_X 
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description="XGBoost model training and evaluation")
-    # parser.add_argument('--training_set', type=str, required=True,
-    #                     help="Path to the training set CSV file")
-    # parser.add_argument('--passenger_set', type=str, required=True,
-    #                     help="Path to the passenger data CSV file")
-    # parser.add_argument('--out', type=str, required=True,
-    #                     help="Path to save the output (predictions or results)")
-    # args = parser.parse_args()
-    #
-    # X, y = load_data(args.training_set, args.passenger_set)
-    #
-    # # Preprocess data
-    # X_train, X_test, y_train, y_test = preprocessing_data(X, y)
-
-    X_train, X_test, y_train, y_test = preprocessing_data()
-
-    result = xg_boost(X_train, X_test, y_train, y_test)
-    print(result)
-
-    # feature evaluation
-    # feature_evaluation(X_train, y_train)
-
-    # mse_poly = polynomial_fitting(X_train, X_test, y_train, y_test)
-    # print('Decision polynomial_fitting')
-    # print(f'Mean Squared Error: {mse_poly}')
+    parser = argparse.ArgumentParser(description="XGBoost model training and evaluation")
+    parser.add_argument('--training_set', type=str, required=True,
+                        help="Path to the training set CSV file")
+    parser.add_argument('--test_set', type=str, required=True,
+                        help="Path to the passenger data CSV file")
+    parser.add_argument('--out', type=str, required=True,
+                        help="Path to save the output (predictions or results)")
+    args = parser.parse_args()
+    train, test = load_data(args.training_set, args.test_set)
+    print(train.columns)
+    print(test.columns)
+    train_processed = preprocessing_data(train,is_train = True)
+    print(train_processed.columns)
+    X_train , y_train = train_processed.drop(columns = "passengers_up") , train_processed["passengers_up"]
+    X_test = preprocessing_data(test,is_train = False)
+    result = xg_boost(X_train, X_test, y_train)
 
