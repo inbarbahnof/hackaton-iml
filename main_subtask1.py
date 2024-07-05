@@ -14,7 +14,6 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.tree import DecisionTreeRegressor
 import evaluation_scripts.eval_passengers_up as eval
-import chardet
 
 TRAIN_BUS_CSV_PATH = "data/train_bus_schedule.csv"
 X_PASSENGER = "data/X_passengers_up.csv"
@@ -334,7 +333,7 @@ def polynomial_fitting(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.
     csv_output(mse_board, y_pred_poly, X_test['trip_id_unique_station'])
     return mse_board
 
-def csv_output(mse:float ,passengers_up: pd.Series, trip_id_unique_station):
+def csv_output(passengers_up: pd.Series, trip_id_unique_station, path):
     # Create DataFrame with predictions
     predictions_df = pd.DataFrame({
         'trip_id_unique_station': trip_id_unique_station,
@@ -342,7 +341,7 @@ def csv_output(mse:float ,passengers_up: pd.Series, trip_id_unique_station):
     })
 
     # Save predictions to CSV file
-    predictions_df.to_csv('passengers_up_predictions.csv', index=False)
+    predictions_df.to_csv(path, index=False)
 
 
 def xg_boost(X_train: pd.DataFrame, X_test: pd.DataFrame, y_train: pd.Series):
@@ -459,4 +458,5 @@ if __name__ == '__main__':
     X_train , y_train = train_processed.drop(columns = "passengers_up") , train_processed["passengers_up"]
     X_test = preprocessing_data(test,is_train = False)
     result = xg_boost(X_train, X_test, y_train)
+    csv_output(result, X_test["trip_id_unique_station"], args.out)
 
