@@ -129,9 +129,9 @@ def preprocessing_baseline(X: pd.DataFrame, y: pd.Series):
     features = pd.concat(
         [f_station_cnt, f_total_passenger, f_mean_passenger, f_mean_passenger_c, f_start_time],
         axis=1)
-    features = features.merge(
-        dur_baseline[["trip_id_unique", "cluster", "direction", "mekadem_nipuach_luz"]],
-        on="trip_id_unique")
+    # features = features.merge(
+    #     dur_baseline[["trip_id_unique", "cluster", "direction", "mekadem_nipuach_luz"]],
+    #     on="trip_id_unique")
     label_encoder = LabelEncoder()
     features['cluster'] = label_encoder.fit_transform(features['cluster'])
     features = features.merge(y[["trip_id_unique", "delta"]], on="trip_id_unique")
